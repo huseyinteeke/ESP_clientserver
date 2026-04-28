@@ -14,6 +14,7 @@
 QueueHandle_t cmdQueue;
 
 void setup() {
+    delay(2000);
     Serial.begin(115200);
     Serial.println("\n======= SARA SISTEMI V1.0 =======");
 
