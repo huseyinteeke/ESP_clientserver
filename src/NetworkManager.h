@@ -5,8 +5,17 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <WebSocketsClient.h>
+#include <WebServer.h>
+#include <LittleFS.h>
+
 #include "Protocol.h"
 
+
+extern WebServer server;
+extern WebSocketsClient webSocket;
+
+void initNetwork();
+void initFOTA();
 void networkTask(void* parameters);
 // Fonksiyon artık sadece struct alacak şekilde güncellendi
 void sendTelemetryToGCS(const TelemetryPacket& data);

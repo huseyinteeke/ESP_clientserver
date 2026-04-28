@@ -3,15 +3,40 @@
 #include "Config.h"
 
 WebSocketsClient webSocket;
+WebServer server(80);
+
+
 TelemetryPacket* offlineBuffer = nullptr;
 int bufferHead = 0;
 int bufferTail = 0;
 int bufferCount = 0;
 portMUX_TYPE bufferMux = portMUX_INITIALIZER_UNLOCKED;
 
+
+void initFOTA()
+{
+    if(!LittleFS.begin(true))
+    {
+        Serial.println("[ERROR] LittleFS fail");
+        return;
+    }
+
+    server.on("/")
+
+}
+
+
+
+
+
+
+
+
+
+
+
 void initBlackBox() {
-    // S3-N8 modelinde PSRAM yok, o yüzden standart malloc
-    offlineBuffer = (TelemetryPacket*)malloc(MAX_OFFLINE_PACKETS * sizeof(TelemetryPacket));
+    offlineBuffer = (TelemetryPacket*)ps_malloc(MAX_OFFLINE_PACKETS * sizeof(TelemetryPacket));
     if (offlineBuffer == NULL) {
         Serial.println("[HATA] RAM tahsisi basarisiz!");
     } else {
@@ -24,14 +49,29 @@ void onWebSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         webSocket.sendTXT("40");
     } else if (type == WStype_TEXT) {
         String text = (char*)payload;
-        if (text.indexOf("\"device_command\"") != -1) {
+        if (text.indexOf("\"device_command\"") != -1 || text.indexOf("\"ui_command\"") != -1) {
             JsonDocument doc; 
             deserializeJson(doc, text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
+            
             ControlPacket cmd = {0};
             const char* action = doc["action"] | "";
+            
             if (strcmp(action, "ARM") == 0) cmd.action = 1;
             else if (strcmp(action, "DISARM") == 0) cmd.action = 2;
-            else if (strcmp(action, "PID_SETPOINT_UPDATE") == 0) cmd.action = 4;
+            else if (strcmp(action, "RESET") == 0) cmd.action = 3;
+            else if (strcmp(action, "PID_SETPOINT_UPDATE") == 0){
+                cmd.action = 4;
+                cmd.kp_p = doc["kppitch"] | 0.0f;
+                cmd.ki_p = doc["kipitch"] | 0.0f;
+                cmd.kd_p = doc["kdpitch"] | 0.0f;
+
+                cmd.kp_y = doc["kppitch"] | 0.0f;
+                cmd.ki_y = doc["kipitch"] | 0.0f;
+                cmd.kd_y = doc["kdpitch"] | 0.0f;
+                
+                cmd.set_p = doc["setpitch"] | 0.0f;
+                cmd.set_y = doc["setyaw"] | 0.0f;
+                }
             // Diğer JSON verilerini burada doldurabilirsin
             xQueueSend(cmdQueue, &cmd, pdMS_TO_TICKS(10));
         }
@@ -72,6 +112,18 @@ void sendTelemetryToGCS(const TelemetryPacket& data) {
 
 void networkTask(void* parameters) {
     initBlackBox();
+    initFOTA();
+
+    //Static IP configuration
+    IPAddress local_IP(192, 168, 43, 100);
+    IPAddress gateway(192, 168, 43, 1);
+    IPAddress subnet(255, 255, 255, 0);
+
+    if(!WiFi.config(local_IP, gateway, subnet)) {
+        Serial.println("[Sys] Statik IP cannot established!");
+    }
+
+
     WiFi.begin(SSID_NAME, PASSWORD);
     while (WiFi.status() != WL_CONNECTED) { vTaskDelay(pdMS_TO_TICKS(500)); }
     
@@ -80,6 +132,7 @@ void networkTask(void* parameters) {
 
     for(;;) {
         webSocket.loop();
+        server.handleClient();
         if (WiFi.status() == WL_CONNECTED && webSocket.isConnected() && bufferCount > 0) {
             portENTER_CRITICAL(&bufferMux);
             TelemetryPacket old = offlineBuffer[bufferTail];
