@@ -1,6 +1,7 @@
 #include "NetworkManager.h"
 #include <ArduinoJson.h>
 #include "Config.h"
+#include <CRC32.h>
 
 WebSocketsClient webSocket;
 WebServer server(80);
@@ -12,6 +13,30 @@ int bufferTail = 0;
 int bufferCount = 0;
 portMUX_TYPE bufferMux = portMUX_INITIALIZER_UNLOCKED;
 
+void verifyAndCompleteFOTA() {
+    String expectedCrcStr = server.header("X-File-CRC");
+    uint32_t expectedCrc = strtoul(expectedCrcStr.c_str(), NULL, 16);
+
+    File f = LittleFS.open("/stm32_fw.bin", FILE_READ);
+    if (!f) return;
+
+    CRC32 crc;
+    while (f.available()) {
+        crc.update(f.read());
+    }
+    f.close();
+
+    uint32_t calculatedCrc = crc.finalize();
+
+    if (calculatedCrc == expectedCrc) {
+        Serial.printf("[FOTA] Basarili! CRC eslesti: %08X\n", calculatedCrc);
+        // STM32 Upload ToDo
+    } else {
+        Serial.printf("[HATA] CRC Hatasi! Beklenen: %08X, Hesaplanan: %08X\n", expectedCrc, calculatedCrc);
+        LittleFS.remove("/stm32_fw.bin"); 
+    }
+}
+
 
 void initFOTA()
 {
@@ -21,16 +46,32 @@ void initFOTA()
         return;
     }
 
-    server.on("/")
+    server.on("/upload_firmware" , HTTP_POST , []() {
+        Serial.println("[HTTP] POST Request Received"); 
+        server.send(200, "text/plain", "OK: File at ESP32. STM32 transfer part.");
+    } , []() {
+        HTTPUpload& upload = server.upload();
+        if (upload.status == UPLOAD_FILE_START) {
+            Serial.printf("FOTA Starting: %s\n", upload.filename.c_str());
+            // Eski dosyayı sil ve yeni dosya aç
+            File f = LittleFS.open("/stm32_fw.bin", FILE_WRITE);
+            f.close();
+        } else if (upload.status == UPLOAD_FILE_WRITE) {
+            File f = LittleFS.open("/stm32_fw.bin", FILE_APPEND);
+            if (f) {
+                f.write(upload.buf, upload.currentSize);
+                f.close();
+            }
+        } else if (upload.status == UPLOAD_FILE_END) {
+            Serial.printf("FOTA ok: %u byte\n", upload.totalSize);
+            verifyAndCompleteFOTA();
+        }
+
+        server.begin();
+        Serial.println("[SYS] FOTA Server Activated");
+    });
 
 }
-
-
-
-
-
-
-
 
 
 
@@ -38,10 +79,11 @@ void initFOTA()
 void initBlackBox() {
     offlineBuffer = (TelemetryPacket*)ps_malloc(MAX_OFFLINE_PACKETS * sizeof(TelemetryPacket));
     if (offlineBuffer == NULL) {
-        Serial.println("[HATA] RAM tahsisi basarisiz!");
-    } else {
-        Serial.println("[Sistem] SRAM Kara Kutu aktif.");
+        Serial.println("[HATA] psRAM tahsisi basarisi , normal RAM dan ayırılıyor.");
+        offlineBuffer = (TelemetryPacket*)malloc(MAX_OFFLINE_PACKETS * sizeof(TelemetryPacket));
     }
+
+    Serial.println(offlineBuffer ? "[SYS] BlackBOX activated." : "[ERROR] NoMemory!");
 }
 
 void onWebSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
@@ -49,7 +91,7 @@ void onWebSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         webSocket.sendTXT("40");
     } else if (type == WStype_TEXT) {
         String text = (char*)payload;
-        if (text.indexOf("\"device_command\"") != -1 || text.indexOf("\"ui_command\"") != -1) {
+        if (text.indexOf("{") != -1) {
             JsonDocument doc; 
             deserializeJson(doc, text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
             
@@ -72,7 +114,6 @@ void onWebSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
                 cmd.set_p = doc["setpitch"] | 0.0f;
                 cmd.set_y = doc["setyaw"] | 0.0f;
                 }
-            // Diğer JSON verilerini burada doldurabilirsin
             xQueueSend(cmdQueue, &cmd, pdMS_TO_TICKS(10));
         }
     }
@@ -131,17 +172,18 @@ void networkTask(void* parameters) {
     webSocket.onEvent(onWebSocketEvent);
 
     for(;;) {
-        webSocket.loop();
-        server.handleClient();
+        server.handleClient(); //For FOTA
+        webSocket.loop(); //Listen for telemetry
         if (WiFi.status() == WL_CONNECTED && webSocket.isConnected() && bufferCount > 0) {
             portENTER_CRITICAL(&bufferMux);
             TelemetryPacket old = offlineBuffer[bufferTail];
             bufferTail = (bufferTail + 1) % MAX_OFFLINE_PACKETS;
             bufferCount--;
             portEXIT_CRITICAL(&bufferMux);
+
             transmitToGCS(old);
             vTaskDelay(pdMS_TO_TICKS(5));
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
