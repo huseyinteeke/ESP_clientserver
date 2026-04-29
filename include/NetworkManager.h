@@ -17,7 +17,6 @@ extern WebSocketsClient webSocket;
 void initNetwork();
 void initFOTA();
 void networkTask(void* parameters);
-// Fonksiyon artık sadece struct alacak şekilde güncellendi
 void sendTelemetryToGCS(const TelemetryPacket& data);
 
 #endif
