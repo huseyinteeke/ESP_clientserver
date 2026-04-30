@@ -12,6 +12,221 @@ int bufferTail = 0;
 int bufferCount = 0;
 portMUX_TYPE bufferMux = portMUX_INITIALIZER_UNLOCKED;
 
+bool waitForAck(uint32_t timeout_ms = 1000) {
+    Serial2.flush();
+    uint32_t timeout = millis();
+    while (millis() - timeout < timeout_ms) {
+        if (Serial2.available()) {
+            uint8_t response = Serial2.read();
+            if (response == 0x79) {
+                return true;  // ACK
+            }
+           else if (response == 0x1F) {
+                    // STM32 isyan bayrağını çekti! Anında işlemi iptal et.
+                    Serial.println("[FOTA][HATA] STM32 NACK (0x1F) dönderdi! Veri eksik veya bozuk.");
+                    return false; 
+                } 
+                else {
+                    // Hataya düşmese bile hattan serseri bir byte gelirse görelim (Debug için efsanedir)
+                    Serial.printf("[FOTA][UYARI] Beklenmeyen byte alındı: 0x%02X\n", response);
+                }
+                yield();
+    }
+}
+    Serial.println("[FOTA] STM32 Timeout: Cevap gelmedi.");
+    return false;
+}
+
+//0xA1: Delete code
+bool stm32GlobalErase() {
+    Serial.println("[FOTA] Flash siliniyor...");
+
+    Serial2.write(0xA1);
+
+    if(!waitForAck(1000)) return false; 
+    return waitForAck(15000); 
+}
+
+
+uint8_t calculateChecksum(uint8_t* data, uint32_t len) {
+    uint8_t crc = 0;
+    for (uint32_t i = 0; i < len; i++) {
+        crc ^= data[i];
+    }
+    return crc;
+}
+
+
+bool WriteChunk(uint8_t* pData , uint16_t len)
+{
+    Serial2.write(0xA2);
+    if(!waitForAck(1000)) { Serial.println("[FOTA] HATA: 0xA2 komut ACK'si gelmedi!"); return false; }
+
+    uint8_t nMinusOne = (uint8_t)(len - 1);
+    Serial2.write(nMinusOne);
+    if(!waitForAck(1000)) { Serial.println("[FOTA] HATA: Uzunluk bilgisi ACK'si gelmedi!"); return false; }
+    
+Serial.println("\n[ANALİZ] Gönderim Öncesi:");
+    Serial.printf("   > RX Buffer'da bekleyen: %d byte\n", Serial2.available());
+    
+    delay(10); 
+
+    // Veriyi gönderiyoruz
+    Serial.println("[FOTA] 256 Byte Paket Basılıyor...");
+    Serial2.write(pData , len);
+    // --- GÖNDERİM SIRASI / SONRASI ANALİZ ---
+    // flush() komutu ESP32'nin donanımsal FIFO'su tamamen boşalana kadar bloklar
+    Serial2.flush(); 
+    Serial.println("[FOTA] Donanımsal Flush Tamamlandı.");
+
+    Serial.println("[ANALİZ] Gönderim Sonrası (Cevap Beklerken):");
+    Serial.printf("   > RX Buffer Durumu: %d byte\n", Serial2.available());
+    
+    // Eğer hattan veri gelmişse ama biz okumamışsak burada göreceğiz
+    if(Serial2.available() > 0) {
+        Serial.printf("   > Hat boş değil! Gelen ilk byte: 0x%02X\n", Serial2.peek());
+    }
+
+    if(!waitForAck(3000)) { 
+        Serial.println("[FOTA] HATA: Flash'a yazma bitiş ACK'si gelmedi!"); 
+        // Timeout anında hattın son durumunu bir kez daha bas
+        Serial.printf("[ANALİZ] Kritik Hata Anı RX Buffer: %d\n", Serial2.available());
+        return false; 
+    }
+    return true;
+}
+
+
+
+
+bool JumpToApp()
+{
+    Serial.println("[FOTA] completed , main code");
+    Serial2.write(0xA3);
+    return waitForAck(1000);
+}
+
+
+
+
+bool enterSTM32Bootloader()
+{
+    pinMode(NRST_PIN  , OUTPUT);
+    digitalWrite(NRST_PIN , LOW);
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    while(Serial2.available()) Serial2.read(); // Clean bus
+    
+    digitalWrite(NRST_PIN , HIGH);
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    uint32_t tStart = millis();
+    while(millis() - tStart < 600) {
+        Serial2.write(0x7F); // "Uyandın mı?"
+        
+        vTaskDelay(pdMS_TO_TICKS(15)); // İşlemcinin cevap vermesi için 15ms bekle
+        
+        // Hattı kontrol et
+        while (Serial2.available()) {
+            uint8_t res = Serial2.read();
+            if (res == 0x79) { // ACK yakalandı!
+                Serial.println("[FOTA] SARA Bootloader uyandı ve 0x7F'i YAKALADI!");
+                return true;
+            }
+        }
+    }
+
+    Serial.println("[FOTA][HATA] SARA Bootloader uyanmadı veya kablo koptu!");
+    return false;
+    
+   
+}
+
+
+void startFotaTransfer()
+{
+    File file =LittleFS.open("/stm32_fw.bin" , "r");
+    uint8_t chunk[256];
+
+    if (commTaskHandle != NULL)
+    {
+        vTaskSuspend(commTaskHandle);
+        Serial.println("[FOTA] Comm Task askıya alındı. Queue'dan veri çekimi durduruldu.");
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(50)); 
+    while(Serial2.available()) Serial2.read(); //Empty the line
+
+
+    if (!enterSTM32Bootloader()) { 
+        Serial.println("[FOTA][HATA] STM32 Bootloader moduna giremedi! Kabloları (USART1: PA9-PA10) ve BOOT1'i kontrol et.");
+        if (commTaskHandle) vTaskResume(commTaskHandle);
+        file.close();
+        return;
+    }
+
+    if (!stm32GlobalErase()) {
+        Serial.println("[FOTA] Flash silme başarısız!");
+        if(commTaskHandle) vTaskResume(commTaskHandle);
+        file.close();
+        return;
+    }
+
+    size_t totalWritten = 0;
+    size_t fileSize = file.size();
+
+    Serial.println("[FOTA] Yazma işlemi başlıyor...");
+
+    while(file.available())
+    {
+        size_t bytesRead = file.read(chunk, sizeof(chunk));
+
+        if(!WriteChunk(chunk , bytesRead))
+        {
+            Serial.printf("[FOTA][HATA] Yazma işlemi %d. byte'da koptu!\n", totalWritten);
+            break;
+        }
+
+        totalWritten += bytesRead;
+
+        if (totalWritten % 1024 == 0 || totalWritten == fileSize) {
+            Serial.printf("[FOTA] İlerleme: %d%%\n", (totalWritten * 100) / fileSize);
+        }
+    }
+
+    if(totalWritten == fileSize)
+    {
+        JumpToApp();
+        Serial.println("[FOTA] İşlem KUSURSUZ tamamlandı, SARA normal modda uçuşa hazır.");
+    }
+    else {
+         Serial.println("[FOTA][HATA] Eksik yazım yapıldı.");
+    }
+    if (commTaskHandle) vTaskResume(commTaskHandle);
+    file.close();
+}
+
+
+
+uint32_t calculateIEEECRC32(File &f) {
+    uint32_t crc = 0xFFFFFFFF;
+    f.seek(0); // Dosya başına dön
+    
+    while (f.available()) {
+        uint8_t b = f.read();
+        crc ^= b;
+        for (int j = 0; j < 8; j++) {
+            if (crc & 1)
+                crc = (crc >> 1) ^ 0xEDB88320;
+            else
+                crc >>= 1;
+        }
+    }
+    return (crc ^ 0xFFFFFFFF);
+}
+
+
+
 // ─────────────────────────────────────────────
 void verifyAndCompleteFOTA() {
     Serial.println("[FOTA] verifyAndCompleteFOTA() başladı.");
@@ -37,10 +252,14 @@ void verifyAndCompleteFOTA() {
     Serial.println("[FOTA] CRC hesaplanıyor...");
 
     CRC32 crc;
+    uint8_t buffer[1024];
     size_t byteCount = 0;
+    f.seek(0);
     while (f.available()) {
-        crc.update(f.read());
-        byteCount++;
+        size_t n = f.read(buffer , sizeof(buffer));
+        for (size_t i = 0; i < n; i++) {
+            crc.update(buffer[i]);
+        }
     }
     f.close();
 
@@ -51,7 +270,7 @@ void verifyAndCompleteFOTA() {
 
     if (calculatedCrc == expectedCrc) {
         Serial.println("[FOTA] BAŞARILI! CRC eşleşti. STM32'ye aktarım başlayacak.");
-        // STM32 Upload ToDo
+        startFotaTransfer();
     } else {
         Serial.printf("[FOTA][HATA] CRC UYUŞMUYOR! Beklenen: %08X | Hesaplanan: %08X\n", expectedCrc, calculatedCrc);
         Serial.println("[FOTA] Bozuk firmware siliniyor...");
@@ -211,12 +430,8 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
                     Serial.printf("[WS][UYARI] Tanınmayan action: '%s'\n", action);
                 }
 
-                BaseType_t qResult = xQueueSend(cmdQueue, &cmd, pdMS_TO_TICKS(10));
-                if (qResult == pdPASS) {
-                    Serial.printf("[WS] Komut kuyruğa eklendi (action: %d)\n", cmd.action);
-                } else {
-                    Serial.println("[WS][HATA] Kuyruk DOLU! Komut atıldı.");
-                }
+
+                if(cmd.action != 0) xQueueSend(cmdQueue, &cmd, pdMS_TO_TICKS(10));
             }
             break;
         }
@@ -269,7 +484,7 @@ void sendTelemetryToGCS(const TelemetryPacket& data) {
         if (bufferCount < MAX_OFFLINE_PACKETS) bufferCount++;
         else bufferTail = (bufferTail + 1) % MAX_OFFLINE_PACKETS;
         portEXIT_CRITICAL(&bufferMux);
-        
+
         if (bufferCount % 50 == 0) {
             Serial.printf("[BBOX] Buffer doluluk: %d/%d paket\n", bufferCount, MAX_OFFLINE_PACKETS);
         }
@@ -336,6 +551,10 @@ void networkTask(void* parameters) {
     uint32_t lastStatusLog = 0;
 
     for (;;) {
+        if (WiFi.status() != WL_CONNECTED) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
         server.handleClient();
         vTaskDelay(2);
         webSocket.loop();

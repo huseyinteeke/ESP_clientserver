@@ -6,7 +6,8 @@
 extern void networkTask(void* paramaters);
 extern void commTask(void* parameters);
 
-
+TaskHandle_t networkTaskHandle = NULL;
+TaskHandle_t commTaskHandle = NULL;
 QueueHandle_t cmdQueue;
 #include <Adafruit_NeoPixel.h>
 
@@ -30,7 +31,7 @@ void setup() {
             10240, 
             NULL, 
             2, 
-            NULL, 
+            &networkTaskHandle, 
             1 
         );
 
@@ -41,7 +42,7 @@ void setup() {
             20480, 
             NULL, 
             3, 
-            NULL, 
+            &commTaskHandle, 
             0 
         );
     }

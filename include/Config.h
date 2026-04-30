@@ -15,8 +15,13 @@ const uint16_t SERVER_PORT   = 8080;
 #define RX2_PIN 16
 #define TX2_PIN 17
 
+#define BOOT0_PIN   40
+#define NRST_PIN    41
 
 #define MAX_OFFLINE_PACKETS 5000
 
+
+extern TaskHandle_t networkTaskHandle;
+extern TaskHandle_t commTaskHandle;
 
 #endif

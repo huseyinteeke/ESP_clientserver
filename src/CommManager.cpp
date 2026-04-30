@@ -4,9 +4,8 @@
 #include "Config.h"
 
 void commTask(void* parameters) {
-    // UART2 konfigürasyonu (Config.h içerisindeki pinlerle)
-    // S3-N8 üzerinde donanımsal UART birimini başlatıyoruz
-    Serial2.begin(115200, SERIAL_8N1, RX2_PIN, TX2_PIN);
+
+    Serial2.begin(115200, SERIAL_8E1, RX2_PIN, TX2_PIN);
     
     ControlPacket outgoingCmd;
     TelemetryPacket incomingData;
