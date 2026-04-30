@@ -14,30 +14,21 @@ void commTask(void* parameters) {
     Serial.println("[Comm] STM32 UART Task'ı Başlatıldı (Core 0).");
 
     for(;;) {
-        // --- 1. GCS'DEN GELEN KOMUTLARI STM32'YE İLET ---
-        // Kuyrukta bekleyen komut var mı? (Beklemeden kontrol et)
+        // --- GCS=>STM32---
         if (xQueueReceive(cmdQueue, &outgoingCmd, 0) == pdPASS) {
-            // Struct'ı doğrudan binary olarak UART hattına basıyoruz
             Serial2.write((uint8_t*)&outgoingCmd, sizeof(ControlPacket));
-            
-            // Hata ayıklama logu
             Serial.printf("[Comm] STM32'ye Komut Basıldı: ID %d\n", outgoingCmd.action);
         }
 
-        // --- 2. STM32'DEN GELEN TELEMETRİYİ YAKALA ---
-        // Buffer'da en az bir tam paket (yaklaşık 40 byte) var mı?
+        // --- STM32 -> GCS ---
         if (Serial2.available() >= sizeof(TelemetryPacket)) {
-            // Gelen binary akışını doğrudan struct belleğine oku
             size_t readLen = Serial2.readBytes((uint8_t*)&incomingData, sizeof(TelemetryPacket));
             
             if (readLen == sizeof(TelemetryPacket)) {
-                // NetworkManager'daki 'Akıllı Yönlendirici'ye gönder
-                // Bu fonksiyon artık Tek Parametre (Struct) alıyor
                 sendTelemetryToGCS(incomingData);
             }
         }
 
-        // RTOS'un diğer çekirdek işlerini halletmesi ve Watchdog beslemesi için
         vTaskDelay(pdMS_TO_TICKS(1)); 
     }
 }

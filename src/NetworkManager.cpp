@@ -269,8 +269,7 @@ void sendTelemetryToGCS(const TelemetryPacket& data) {
         if (bufferCount < MAX_OFFLINE_PACKETS) bufferCount++;
         else bufferTail = (bufferTail + 1) % MAX_OFFLINE_PACKETS;
         portEXIT_CRITICAL(&bufferMux);
-
-        // Her 50 pakette bir buffer doluluk oranını logla
+        
         if (bufferCount % 50 == 0) {
             Serial.printf("[BBOX] Buffer doluluk: %d/%d paket\n", bufferCount, MAX_OFFLINE_PACKETS);
         }
