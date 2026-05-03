@@ -9,6 +9,7 @@ extern void commTask(void* parameters);
 TaskHandle_t networkTaskHandle = NULL;
 TaskHandle_t commTaskHandle = NULL;
 QueueHandle_t cmdQueue;
+QueueHandle_t telemetryQueue;
 #include <Adafruit_NeoPixel.h>
 
 #define RGB_PIN 48  
@@ -21,6 +22,7 @@ void setup() {
     delay(500);
     pixel.begin(); 
     cmdQueue = xQueueCreate(10, sizeof(ControlPacket));
+    telemetryQueue = xQueueCreate(20 , sizeof(TelemetryPacket));
     pixel.setPixelColor(0, 255, 0, 0); 
     pixel.show();
     if (cmdQueue != NULL) {

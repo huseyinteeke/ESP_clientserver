@@ -14,6 +14,8 @@
 extern WebServer server;
 extern WebSocketsClient webSocket;
 
+
+
 void initNetwork();
 void initFOTA();
 void networkTask(void* parameters);
