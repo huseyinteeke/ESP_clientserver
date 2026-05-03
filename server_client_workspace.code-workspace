@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "../server"
+		},
+		{
+			"name": "ESP_clientserver",
+			"path": "."
+		}
+	],
+	"settings": {}
+}

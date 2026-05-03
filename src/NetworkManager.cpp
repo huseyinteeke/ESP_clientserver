@@ -426,7 +426,8 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
                         cmd.kp_p, cmd.ki_p, cmd.kd_p, cmd.set_p);
                     Serial.printf("[WS] PID Yaw   → Kp:%.2f Ki:%.2f Kd:%.2f Set:%.2f\n",
                         cmd.kp_y, cmd.ki_y, cmd.kd_y, cmd.set_y);
-                } else {
+                }
+                else {
                     Serial.printf("[WS][UYARI] Tanınmayan action: '%s'\n", action);
                 }
 
