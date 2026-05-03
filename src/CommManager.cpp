@@ -6,10 +6,10 @@
 void commTask(void* parameters) {
 
     Serial2.begin(115200, SERIAL_8E1, RX2_PIN, TX2_PIN);
-    
+    Serial2.setRxBufferSize(1024);
     ControlPacket outgoingCmd;
     TelemetryPacket incomingData;
-    
+    uint8_t rxBuffer[sizeof(TelemetryPacket)];
     Serial.println("[Comm] STM32 UART Task'ı Başlatıldı (Core 0).");
 
     for(;;) {
@@ -21,12 +21,25 @@ void commTask(void* parameters) {
 
         // --- STM32 -> GCS ---
         if (Serial2.available() >= sizeof(TelemetryPacket)) {
-            size_t readLen = Serial2.readBytes((uint8_t*)&incomingData, sizeof(TelemetryPacket));
+            uint8_t byte1 = Serial2.read();
+            if(byte1 == 0xBB)
+            {
+            uint8_t byte2 = Serial2.peek();
             
-            if (readLen == sizeof(TelemetryPacket)) {
-                sendTelemetryToGCS(incomingData);
+            if(byte2 == 0xAA)
+            {
+                rxBuffer[0] = byte1;
+                Serial2.readBytes(&rxBuffer[1], sizeof(TelemetryPacket) - 1);
+                memcpy(&incomingData , rxBuffer , sizeof(TelemetryPacket));
+
+                if(incomingData.footer == 0xCCDD) {
+                 
+                 sendTelemetryToGCS(incomingData);
+             }
             }
+            
         }
+    }
 
         vTaskDelay(pdMS_TO_TICKS(1)); 
     }
