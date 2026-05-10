@@ -16,6 +16,7 @@ void commTask(void* parameters) {
         // --- GCS=>STM32---
         if (xQueueReceive(cmdQueue, &outgoingCmd, 0) == pdPASS) {
             Serial2.write((uint8_t*)&outgoingCmd, sizeof(ControlPacket));
+            vTaskDelay(500);
             Serial.printf("[Comm] STM32'ye Komut Basıldı: ID %d\n", outgoingCmd.action);
         }
 

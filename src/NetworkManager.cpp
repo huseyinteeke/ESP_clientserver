@@ -429,16 +429,19 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
                 if (strcmp(action, "ARM") == 0) {
                     cmd.action = 1;
                     isArmed = 1;
+                    portENTER_CRITICAL(&bufferMux);
+                    bufferHead = 0;
+                    bufferTail = 0;
+                    bufferCount = 0;
+                    isArmed = 1;
+                    portEXIT_CRITICAL(&bufferMux);
                 }
                 else if (strcmp(action, "DISARM") == 0){
                     cmd.action = 2;
                     isArmed = 0;
                 }
                 else if (strcmp(action, "RESET") == 0){
-                    Serial.println("Reset msg");
-                    digitalWrite(NRST_PIN, LOW);
-                    vTaskDelay(pdMS_TO_TICKS(50));
-                    digitalWrite(NRST_PIN, HIGH);
+                    cmd.action = 3;
                 }
                 else if (strcmp(action, "PID_SETPOINT_UPDATE") == 0) {
                     cmd.action = 4;
@@ -507,15 +510,15 @@ void transmitToGCS(const TelemetryPacket& data) {
 void sendTelemetryToGCS(const TelemetryPacket& data) {
     if (WiFi.status() == WL_CONNECTED &&  webSocket.isConnected()) {
         xQueueSend(telemetryQueue , &data , 0);
-    } else if (offlineBuffer != nullptr) {
+    } 
+    
+    if (isArmed == 1 &&  offlineBuffer != nullptr) {
         portENTER_CRITICAL(&bufferMux);
         offlineBuffer[bufferHead] = data;
         bufferHead = (bufferHead + 1) % MAX_OFFLINE_PACKETS;
         if (bufferCount < MAX_OFFLINE_PACKETS) bufferCount++;
         else bufferTail = (bufferTail + 1) % MAX_OFFLINE_PACKETS;
         portEXIT_CRITICAL(&bufferMux);
-    } else {
-        Serial.println("[GCS][HATA] WS bağlı değil VE buffer null! Telemetri KAYBOLDU.");
     }
 }
 
@@ -549,7 +552,7 @@ void networkTask(void* parameters) {
     }
 
     Serial.printf("[NET] WiFi BAĞLANDI! IP: %s | RSSI: %d dBm\n",
-        WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    WiFi.localIP().toString().c_str(), WiFi.RSSI());
     server.begin(); // ← WiFi bağlandıktan SONRA buraya taşı
     Serial.println("[FOTA] HTTP Server başlatıldı.");
     
@@ -607,7 +610,22 @@ void networkTask(void* parameters) {
                     bufferCount--;
                     portEXIT_CRITICAL(&bufferMux);
 
-                    transmitToGCS(oldData); 
+                    static  JsonDocument doc;
+                    doc["Time"]     = oldData.timestamp;
+                    doc["Depth"]    = oldData.depth;
+                    doc["Ax"]       = oldData.ax;
+                    doc["Ay"]       = oldData.ay;
+                    doc["Az"]       = oldData.az;
+                    doc["pitch"]    = oldData.pitch;
+                    doc["roll"]     = oldData.roll;
+                    doc["yaw"]      = oldData.yaw;
+                    doc["velocity"] = oldData.velocity;
+                    doc["distance"] = oldData.distance;
+
+                    String payload;
+                    serializeJson(doc , payload);
+
+                    webSocket.sendTXT("42[\"log_data\"," + payload + "]");
                 }
 
                 if (bufferCount == 0) {
