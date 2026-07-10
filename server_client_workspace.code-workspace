@@ -8,5 +8,7 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"platformio-ide.activateProjectOnStartup": false
+	}
 }

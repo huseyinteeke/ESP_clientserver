@@ -143,7 +143,7 @@ void startFotaTransfer()
 {
     File file =LittleFS.open("/stm32_fw.bin" , "r");
     uint8_t chunk[256];
-
+    Serial.println("FOTA girildi");
     if (commTaskHandle != NULL)
     {
         vTaskSuspend(commTaskHandle);
@@ -527,8 +527,8 @@ void networkTask(void* parameters) {
     initBlackBox();
     initFOTA();
 
-    IPAddress local_IP(10, 17 , 15, 101);
-    IPAddress gateway(10, 17 , 15 , 1);
+    IPAddress local_IP(10, 214 , 247, 101);
+    IPAddress gateway(10, 214 , 247 , 1);
     IPAddress subnet(255, 255, 255, 0);
     WiFi.config(local_IP, gateway, subnet);
     WiFi.mode(WIFI_STA); 

@@ -8,15 +8,15 @@ const char* const SSID_NAME = "huseyin";
 const char* const PASSWORD  = "12345677";
 
 // Server 
-const char* const SERVER_IP = "10.17.15.138";
+const char* const SERVER_IP = "10.214.247.138";
 const uint16_t SERVER_PORT   = 8080;
 
 // UART Pin Definitions
-#define RX2_PIN 16
+#define RX2_PIN 18
 #define TX2_PIN 17
 
 #define BOOT0_PIN   40
-#define NRST_PIN    41
+#define NRST_PIN    8
 
 #define MAX_OFFLINE_PACKETS 50000
 
