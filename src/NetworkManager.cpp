@@ -595,6 +595,23 @@ void networkTask(void* parameters) {
                 ESP.getFreeHeap());
         }
 
+
+        if(millis() - lastStatusLog > 10000) {
+            lastStatusLog = millis();
+            if (WiFi.status() != WL_CONNECTED) {
+                Serial.println("[NET][UYARI] WiFi bağlantısı kesildi! Yeniden bağlanılıyor...");
+                WiFi.disconnect();
+                WiFi.begin(SSID_NAME, PASSWORD);
+            }
+
+            if (!webSocket.isConnected()) {
+                Serial.println("[NET][UYARI] WebSocket bağlantısı kesildi! Yeniden bağlanılıyor...");
+                webSocket.disconnect();
+                webSocket.begin(SERVER_IP, SERVER_PORT, "/socket.io/?EIO=4&transport=websocket");
+
+            }
+        }
+        
         if(startLogDownload)
         {
             if (bufferCount == 0) {
