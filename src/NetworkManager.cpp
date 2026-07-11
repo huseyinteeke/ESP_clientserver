@@ -601,14 +601,12 @@ void networkTask(void* parameters) {
             if (WiFi.status() != WL_CONNECTED) {
                 Serial.println("[NET][UYARI] WiFi bağlantısı kesildi! Yeniden bağlanılıyor...");
                 WiFi.disconnect();
-                WiFi.begin(SSID_NAME, PASSWORD);
+                WiFi.reconnect();
             }
-
             if (!webSocket.isConnected()) {
                 Serial.println("[NET][UYARI] WebSocket bağlantısı kesildi! Yeniden bağlanılıyor...");
                 webSocket.disconnect();
                 webSocket.begin(SERVER_IP, SERVER_PORT, "/socket.io/?EIO=4&transport=websocket");
-
             }
         }
 
