@@ -596,7 +596,7 @@ void networkTask(void* parameters) {
         }
 
 
-        if(millis() - lastStatusLog > 10000) {
+        if(millis() - lastStatusLog > 1000) {
             lastStatusLog = millis();
             if (WiFi.status() != WL_CONNECTED) {
                 Serial.println("[NET][UYARI] WiFi bağlantısı kesildi! Yeniden bağlanılıyor...");
@@ -611,7 +611,7 @@ void networkTask(void* parameters) {
 
             }
         }
-        
+
         if(startLogDownload)
         {
             if (bufferCount == 0) {
