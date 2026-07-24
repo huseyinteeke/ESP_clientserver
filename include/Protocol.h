@@ -17,7 +17,10 @@ typedef struct __attribute__((packed)){
 typedef struct __attribute__((packed)){
     uint16_t header;
     uint32_t timestamp;
-    float depth, ax, ay, az, pitch, roll, yaw , velocity , distance;
+    float depth, ax, ay, az, pitch,
+    roll, yaw , velocityx , velocityy ,
+    velocityz , distancex , distancey , 
+    distancez , rpm , rudderangle , sternangle;  
     uint16_t footer;
 } TelemetryPacket;
 

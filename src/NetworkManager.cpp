@@ -365,8 +365,8 @@ void drainOfflineBuffer()
         doc["pitch"]    = oldData.pitch;
         doc["roll"]     = oldData.roll;
         doc["yaw"]      = oldData.yaw;
-        doc["velocity"] = oldData.velocity;
-        doc["distance"] = oldData.distance;
+        doc["velocity"] = oldData.velocityx;
+        doc["distance"] = oldData.distancex;
 
         String payload;
         serializeJson(doc, payload);
@@ -494,8 +494,8 @@ void transmitToGCS(const TelemetryPacket& data) {
     doc["pitch"]    = data.pitch;
     doc["roll"]     = data.roll;
     doc["yaw"]      = data.yaw;
-    doc["velocity"] = data.velocity;
-    doc["distance"] = data.distance;
+    doc["velocity"] = data.velocityx;
+    doc["distance"] = data.distancex;
     doc["armed"]    = isArmed;
     String payload;
     serializeJson(doc, payload);
@@ -527,8 +527,8 @@ void networkTask(void* parameters) {
     initBlackBox();
     initFOTA();
 
-    IPAddress local_IP(10, 17 , 15, 101);
-    IPAddress gateway(10, 17 , 15 , 1);
+    IPAddress local_IP(10, 226 , 216, 101);
+    IPAddress gateway(10, 226 , 216 , 1);
     IPAddress subnet(255, 255, 255, 0);
     WiFi.config(local_IP, gateway, subnet);
     WiFi.mode(WIFI_STA); 
@@ -619,8 +619,15 @@ void networkTask(void* parameters) {
                     doc["pitch"]    = oldData.pitch;
                     doc["roll"]     = oldData.roll;
                     doc["yaw"]      = oldData.yaw;
-                    doc["velocity"] = oldData.velocity;
-                    doc["distance"] = oldData.distance;
+                    doc["velocityx"] = oldData.velocityx;
+                    doc["velocityy"] = oldData.velocityy;
+                    doc["velocityz"] = oldData.velocityz;
+                    doc["distancex"] = oldData.distancex;
+                    doc["distancey"] = oldData.distancey;
+                    doc["distancez"] = oldData.distancez;
+                    doc["rpm"] = oldData.rpm;
+                    doc["rudderangle"] = oldData.rudderangle;
+                    doc["sternangle"] = oldData.sternangle;
 
                     String payload;
                     serializeJson(doc , payload);

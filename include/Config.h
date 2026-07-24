@@ -4,11 +4,11 @@
 #include <Arduino.h>
 
 // WiFi 
-const char* const SSID_NAME = "huseyin";
-const char* const PASSWORD  = "12345677";
+const char* const SSID_NAME = "ayse";
+const char* const PASSWORD  = "aysesude54";
 
 // Server 
-const char* const SERVER_IP = "10.17.15.138";
+const char* const SERVER_IP = "10.226.216.45";
 const uint16_t SERVER_PORT   = 8080;
 
 // UART Pin Definitions
