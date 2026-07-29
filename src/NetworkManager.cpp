@@ -574,7 +574,12 @@ void networkTask(void* parameters) {
     for (;;) {
         if (WiFi.status() != WL_CONNECTED) {
             vTaskDelay(pdMS_TO_TICKS(100));
-            continue;
+            WiFi.disconnect();
+            while(WiFi.begin(SSID , PASSWORD) != WL_CONNECTED){
+                vTaskDelay(100);
+                WiFi.disconnect();
+                continue;
+            }
         }
         server.handleClient();
         vTaskDelay(2);
