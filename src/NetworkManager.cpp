@@ -494,8 +494,15 @@ void transmitToGCS(const TelemetryPacket& data) {
     doc["pitch"]    = data.pitch;
     doc["roll"]     = data.roll;
     doc["yaw"]      = data.yaw;
-    doc["velocity"] = data.velocityx;
-    doc["distance"] = data.distancex;
+    doc["velocityx"] = data.velocityx;
+    doc["velocityy"] = data.velocityy;
+    doc["velocityz"] = data.velocityz;
+    doc["distancex"] = data.distancex;
+    doc["distancey"] = data.distancey;
+    doc["distancez"] = data.distancez;
+    doc["rpm"] = data.rpm;
+    doc["rudderangle"] = data.rudderangle;
+    doc["sternangle"] = data.sternangle;
     doc["armed"]    = isArmed;
     String payload;
     serializeJson(doc, payload);
@@ -527,8 +534,8 @@ void networkTask(void* parameters) {
     initBlackBox();
     initFOTA();
 
-    IPAddress local_IP(10, 59 , 94 , 101);
-    IPAddress gateway(10, 59 , 94 , 1);
+    IPAddress local_IP(10, 252, 138, 101);
+    IPAddress gateway(10, 252, 138, 1);
     IPAddress subnet(255, 255, 255, 0);
     WiFi.config(local_IP, gateway, subnet);
     WiFi.mode(WIFI_STA); 
@@ -569,45 +576,46 @@ void networkTask(void* parameters) {
 
     uint32_t lastStatusLog = 0;
     WiFi.setSleep(false);
-    
+    uint32_t lastWifiRetryTime = 0;
+    const uint32_t WIFI_RETRY_INTERVAL = 5000;
     
     for (;;) {
         if (WiFi.status() != WL_CONNECTED) {
-            vTaskDelay(pdMS_TO_TICKS(100));
-            WiFi.disconnect();
-            while(WiFi.begin(SSID , PASSWORD) != WL_CONNECTED){
-                vTaskDelay(100);
+            if (millis() - lastWifiRetryTime > WIFI_RETRY_INTERVAL) {
                 WiFi.disconnect();
-                continue;
+                vTaskDelay(pdMS_TO_TICKS(50)); // Radyonun kapanması için kısa bir süre
+                WiFi.begin(SSID_NAME, PASSWORD);
+                lastWifiRetryTime = millis();
+            }
+            // WiFi koptuğunda WebSocket'i de kapatmalıyız ki arkada ölü soket kalmasın
+            if (webSocket.isConnected()) {
+                webSocket.disconnect();
+            }
+        }else{
+            server.handleClient();
+            vTaskDelay(2);
+            webSocket.loop();
+            vTaskDelay(3);
+            if(millis() - lastStatusLog > 1000) {
+                lastStatusLog = millis();
+                if (!webSocket.isConnected()) {
+                    webSocket.disconnect(); // Önceki kırıntıları temizle
+                    webSocket.begin(SERVER_IP, SERVER_PORT, "/socket.io/?EIO=4&transport=websocket");
+                }
             }
         }
-        server.handleClient();
-        vTaskDelay(2);
-        webSocket.loop();
-        vTaskDelay(3);
-
         TelemetryPacket liveData;
         if (xQueueReceive(telemetryQueue, &liveData, 0) == pdPASS) {
             transmitToGCS(liveData);
-        }
+            
+         }
 
-        if (millis() - lastStatusLog > 5000) {
-            lastStatusLog = millis();
-            Serial.printf("[NET] Durum → WiFi:%s | WS:%s | Buffer:%d | Heap:%d\n",
-                WiFi.status() == WL_CONNECTED ? "OK" : "KOPUK",
-                webSocket.isConnected() ? "OK" : "KOPUK",
-                bufferCount,
-                ESP.getFreeHeap());
-        }
+    
 
 
         if(millis() - lastStatusLog > 1000) {
             lastStatusLog = millis();
-            if (WiFi.status() != WL_CONNECTED) {
-                Serial.println("[NET][UYARI] WiFi bağlantısı kesildi! Yeniden bağlanılıyor...");
-                WiFi.disconnect();
-                WiFi.reconnect();
-            }
+
             if (!webSocket.isConnected()) {
                 Serial.println("[NET][UYARI] WebSocket bağlantısı kesildi! Yeniden bağlanılıyor...");
                 webSocket.disconnect();
@@ -615,7 +623,7 @@ void networkTask(void* parameters) {
             }
         }
 
-        if(startLogDownload)
+        if(startLogDownload && webSocket.isConnected())
         {
             if (bufferCount == 0) {
                 webSocket.sendTXT("42[\"log_status\", \"Buffer boş\"]");

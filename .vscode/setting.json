@@ -1,0 +1,7 @@
+{
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/.pio/build/esp32-s3-devkitc-1",
+        "--query-driver=C:/Users/husey/.platformio/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-*"
+    ],
+    "C_Cpp.intelliSenseEngine": "Disabled"
+}
