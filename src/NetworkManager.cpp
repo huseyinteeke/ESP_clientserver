@@ -2,7 +2,7 @@
 #include <ArduinoJson.h>
 #include "Config.h"
 #include "CRC32.h"
-
+#include <ElegantOTA.h>
 
 WebSocketsClient webSocket;
 TelemetryPacket* offlineBuffer = nullptr;
@@ -141,9 +141,16 @@ bool enterSTM32Bootloader()
 
 void startFotaTransfer()
 {
+    // Signal to commTask that it must yield
+
+    vTaskDelay(pdMS_TO_TICKS(100)); // Give commTask a moment to register the flag
     File file =LittleFS.open("/stm32_fw.bin" , "r");
+    if (!file) {
+    Serial.println("[FOTA][HATA] Firmware dosyasi acilamadi!");
+    return;
+}
     uint8_t chunk[256];
-    Serial.println("FOTA girildi");
+
     if (commTaskHandle != NULL)
     {
         vTaskSuspend(commTaskHandle);
@@ -155,14 +162,16 @@ void startFotaTransfer()
 
 
     if (!enterSTM32Bootloader()) { 
-        if (commTaskHandle) vTaskResume(commTaskHandle);
+        
+       if (commTaskHandle) vTaskResume(commTaskHandle);
         file.close();
         return;
     }
 
     if (!stm32GlobalErase()) {
         Serial.println("[FOTA] Flash silme başarısız!");
-        if(commTaskHandle) vTaskResume(commTaskHandle);
+
+     if(commTaskHandle) vTaskResume(commTaskHandle);
         file.close();
         return;
     }
@@ -193,6 +202,7 @@ void startFotaTransfer()
     else {
          Serial.println("[FOTA][HATA] Eksik yazım yapıldı.");
     }
+    
     if (commTaskHandle) vTaskResume(commTaskHandle);
     file.close();
 }
@@ -250,7 +260,9 @@ void verifyAndCompleteFOTA() {
         size_t n = f.read(buffer , sizeof(buffer));
         for (size_t i = 0; i < n; i++) {
             crc.update(buffer[i]);
+            byteCount += n;
         }
+
     }
     f.close();
 
@@ -284,6 +296,33 @@ void initFOTA() {
         Serial.printf("[FOTA]: %d byte\n", existing.size());
         existing.close();
     }
+    server.on("/", HTTP_GET, []() {
+    server.send(200, "text/html",
+        "<!DOCTYPE html><html><body style='font-family:sans-serif;padding:20px'>"
+        "<h2>AUV Control Panel</h2>"
+        "<p><a href='/update'>Firmware Update (ElegantOTA)</a></p>"
+        "<form method='POST' action='/reset_esp32' "
+        "onsubmit='return confirm(\"Are you sure? This will reboot the vehicle.\");'>"
+        "<button type='submit' style='padding:12px 24px;font-size:16px'>Reset ESP32</button>"
+        "</form>"
+        "</body></html>");
+});
+    server.on("/reset_esp32", HTTP_OPTIONS, []() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.sendHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+    server.sendHeader("Access-Control-Allow-Headers", "*");
+    server.send(200);
+});
+    server.on("/reset_esp32", HTTP_POST, []() {
+        if (!server.authenticate(OTA_USERNAME, OTA_PASSWORD)) {
+        return server.requestAuthentication();
+    }
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "text/plain", "OK: ESP32 resetting...");
+    Serial.println("[SYS] ESP32 reset requested via HTTP.");
+    vTaskDelay(pdMS_TO_TICKS(300));  // let the HTTP response actually leave the socket
+    ESP.restart();
+});
     server.on("/upload_firmware", HTTP_OPTIONS, []() {
         server.sendHeader("Access-Control-Allow-Origin", "*");
         server.sendHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
@@ -413,6 +452,10 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
             break;
         case WStype_TEXT: {
             String text = (char*)payload;
+            if (text == "2") {
+                webSocket.sendTXT("3");
+                break;
+            }
             if (text.indexOf("{") != -1) {
                 JsonDocument doc;
                 DeserializationError err = deserializeJson(doc, text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
@@ -561,6 +604,7 @@ void networkTask(void* parameters) {
     Serial.printf("[NET] WiFi BAĞLANDI! IP: %s | RSSI: %d dBm\n",
     WiFi.localIP().toString().c_str(), WiFi.RSSI());
     server.begin(); // ← WiFi bağlandıktan SONRA buraya taşı
+    ElegantOTA.begin(&server);
     Serial.println("[FOTA] HTTP Server başlatıldı.");
     
     
@@ -576,14 +620,15 @@ void networkTask(void* parameters) {
 
     uint32_t lastStatusLog = 0;
     WiFi.setSleep(false);
+    
     uint32_t lastWifiRetryTime = 0;
     const uint32_t WIFI_RETRY_INTERVAL = 5000;
     
     for (;;) {
         if (WiFi.status() != WL_CONNECTED) {
-            if (millis() - lastWifiRetryTime > WIFI_RETRY_INTERVAL) {
-                WiFi.disconnect();
-                vTaskDelay(pdMS_TO_TICKS(50)); // Radyonun kapanması için kısa bir süre
+           if (millis() - lastWifiRetryTime > WIFI_RETRY_INTERVAL) {
+             WiFi.disconnect();
+             vTaskDelay(pdMS_TO_TICKS(50)); // Radyonun kapanması için kısa bir süre
                 WiFi.begin(SSID_NAME, PASSWORD);
                 lastWifiRetryTime = millis();
             }
@@ -594,6 +639,8 @@ void networkTask(void* parameters) {
         }else{
             server.handleClient();
             vTaskDelay(2);
+            ElegantOTA.loop();
+            vTaskDelay(2);
             webSocket.loop();
             vTaskDelay(3);
             if(millis() - lastStatusLog > 1000) {
@@ -602,20 +649,27 @@ void networkTask(void* parameters) {
                     webSocket.disconnect(); // Önceki kırıntıları temizle
                     webSocket.begin(SERVER_IP, SERVER_PORT, "/socket.io/?EIO=4&transport=websocket");
                 }
-            }
+             
         }
+    }
+    
+
         TelemetryPacket liveData;
         if (xQueueReceive(telemetryQueue, &liveData, 0) == pdPASS) {
             transmitToGCS(liveData);
-            
-         }
+        }
 
-    
-
-
-        if(millis() - lastStatusLog > 1000) {
+        if (millis() - lastStatusLog > 5000) {
             lastStatusLog = millis();
-
+            Serial.printf("[NET2] Durum → WiFi:%s | WS:%s | Buffer:%d | Heap:%d\n",
+                WiFi.status() == WL_CONNECTED ? "OK" : "KOPUK",
+                webSocket.isConnected() ? "OK" : "KOPUK",
+                bufferCount,
+                ESP.getFreeHeap());
+        }
+         if(millis() - lastStatusLog > 1000) {
+            lastStatusLog = millis();
+            
             if (!webSocket.isConnected()) {
                 Serial.println("[NET][UYARI] WebSocket bağlantısı kesildi! Yeniden bağlanılıyor...");
                 webSocket.disconnect();
