@@ -320,6 +320,7 @@ void initFOTA() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.send(200, "text/plain", "OK: ESP32 resetting...");
     Serial.println("[SYS] ESP32 reset requested via HTTP.");
+        webSocket.disconnect();              
     vTaskDelay(pdMS_TO_TICKS(300));  // let the HTTP response actually leave the socket
     ESP.restart();
 });
