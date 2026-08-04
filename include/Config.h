@@ -10,7 +10,9 @@ const char* const PASSWORD  = "12345677";
 // Server 
 const char* const SERVER_IP = "10.252.138.138";
 const uint16_t SERVER_PORT   = 8080;
-
+// OTA
+#define OTA_USERNAME "sungur"
+#define OTA_PASSWORD "12345678"
 // UART Pin Definitions
 #define PERTINANKS
 
