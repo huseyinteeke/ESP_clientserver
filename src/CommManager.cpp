@@ -7,7 +7,7 @@ void commTask(void* parameters) {
 
     Serial2.begin(115200, SERIAL_8E1, RX2_PIN, TX2_PIN);
     Serial2.setRxBufferSize(1024);
-    ControlPacket outgoingCmd;
+    CommandData_t outgoingCmd;
     TelemetryPacket incomingData;
     uint8_t rxBuffer[sizeof(TelemetryPacket)];
     Serial.println("[Comm] STM32 UART Task'ı Başlatıldı (Core 0).");
@@ -15,9 +15,9 @@ void commTask(void* parameters) {
     for(;;) {
         // --- GCS=>STM32---
         if (xQueueReceive(cmdQueue, &outgoingCmd, 0) == pdPASS) {
-            Serial2.write((uint8_t*)&outgoingCmd, sizeof(ControlPacket));
+            Serial2.write((uint8_t*)&outgoingCmd, sizeof(CommandData_t));
             vTaskDelay(500);
-            Serial.printf("[Comm] STM32'ye Komut Basıldı: ID %d\n", outgoingCmd.action);
+            Serial.printf("[Comm] STM32'ye Komut Basıldı: ID %d\n", outgoingCmd.command);
         }
 
         // --- STM32 -> GCS ---

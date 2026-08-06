@@ -5,13 +5,6 @@
 
 
 
-typedef struct __attribute__((packed)){
-    uint8_t action; //0: NONE, 1: ARM, 2: DISARM, 3: FOTA, 4: PID_UPDATE
-    float kp_p, ki_p, kd_p; 
-    float kp_y, ki_y, kd_y; 
-    float set_p , set_y;
-} ControlPacket;
-
 
 
 typedef struct __attribute__((packed)){
@@ -21,6 +14,26 @@ typedef struct __attribute__((packed)){
     uint16_t footer;
 } TelemetryPacket;
 
+
+
+
+
+typedef enum
+{
+  TURN  = 0,
+  DEPTH , 
+  GO_TO , 
+  SYSTEM_RESET , 
+  ARM , 
+  DISARM , 
+  YUNUSLAMA
+} Command_t;
+
+typedef struct __attribute((packed))
+{
+  Command_t command;
+  int16_t value;
+}CommandData_t;
 
 extern QueueHandle_t cmdQueue;
 

@@ -414,7 +414,9 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
         case WStype_TEXT: {
             String text = (char*)payload;
             if (text.indexOf("{") != -1) {
-                JsonDocument doc;
+                // ArduinoJson v7 için dinamik kapasiteyi constructor içinde veriyoruz
+                JsonDocument doc; 
+                
                 DeserializationError err = deserializeJson(doc, text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
 
                 if (err) {
@@ -422,13 +424,13 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
                     break;
                 }
 
-                ControlPacket cmd = {0};
+                CommandData_t cmd;
+                cmd.command = (Command_t)0; // Enum tipine uygun olması için casting yapıyoruz
+                
                 const char* action = doc["action"] | "";
-                //Serial.printf("[WS] Action: '%s'\n", action);
 
                 if (strcmp(action, "ARM") == 0) {
-                    cmd.action = 1;
-                    isArmed = 1;
+                    cmd.command = ARM;
                     portENTER_CRITICAL(&bufferMux);
                     bufferHead = 0;
                     bufferTail = 0;
@@ -436,36 +438,52 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
                     isArmed = 1;
                     portEXIT_CRITICAL(&bufferMux);
                 }
-                else if (strcmp(action, "DISARM") == 0){
-                    cmd.action = 2;
+                else if (strcmp(action, "DISARM") == 0) {
+                    cmd.command = DISARM;
                     isArmed = 0;
                 }
-                else if (strcmp(action, "RESET") == 0){
-                    cmd.action = 3;
+                else if (strcmp(action, "RESET") == 0) {
+                    cmd.command = SYSTEM_RESET;
                 }
-                else if (strcmp(action, "PID_SETPOINT_UPDATE") == 0) {
-                    cmd.action = 4;
-                    cmd.kp_p = doc["kppitch"] | 0.0f;
-                    cmd.ki_p = doc["kipitch"] | 0.0f;
-                    cmd.kd_p = doc["kdpitch"] | 0.0f;
-                    cmd.kp_y = doc["kpyaw"]   | 0.0f; 
-                    cmd.ki_y = doc["kiyaw"]   | 0.0f;  
-                    cmd.kd_y = doc["kdyaw"]   | 0.0f;  
-                    cmd.set_p = doc["setpitch"] | 0.0f;
-                    cmd.set_y = doc["setyaw"]   | 0.0f;
-                    Serial.printf("[WS] PID Pitch → Kp:%.2f Ki:%.2f Kd:%.2f Set:%.2f\n",
-                        cmd.kp_p, cmd.ki_p, cmd.kd_p, cmd.set_p);
-                    Serial.printf("[WS] PID Yaw   → Kp:%.2f Ki:%.2f Kd:%.2f Set:%.2f\n",
-                        cmd.kp_y, cmd.ki_y, cmd.kd_y, cmd.set_y);
-                }
-                else if(strcmp(action , "DOWNLOAD") == 0)
-                {
+                else if (strcmp(action, "DOWNLOAD") == 0) {
                     startLogDownload = true;
                     Serial.println("[BBOX] Log indirme isteği alındı, aktarım başlatılıyor...");
                 }
-     
+                else if (strcmp(action, "WAYPOINT_SEQUENCE") == 0) {
+                    JsonArray wpArray = doc["commands"];
+                    
+                    for (JsonObject wp : wpArray) {
+                        const char* wpAction = wp["action"] | "";
+                        float wpValue = wp["value"] | 0.0f;
+                        
+                        CommandData_t wpCmd;
+                        wpCmd.value = (int16_t)wpValue; // float değeri int16_t'ye çeviriyoruz
+                        
+                        // JS'den gelen action metnine göre enum eşlemesi
+                        if (strcmp(wpAction, "TURN") == 0) {
+                            wpCmd.command = TURN;
+                        }
+                        else if (strcmp(wpAction, "DEPTH") == 0 || strcmp(wpAction, "MOVE") == 0) {
+                            wpCmd.command = DEPTH; // Veya GO_TO
+                        }
+                        else if (strcmp(wpAction, "YUNUSLAMA") == 0 || strcmp(wpAction, "PORPOISING") == 0) {
+                            wpCmd.command = YUNUSLAMA;
+                        }
+                        else {
+                            wpCmd.command = GO_TO; // Varsayılan veya tanımlı başka bir komut
+                        }
+                        
+                        Serial.printf("[WS] Waypoint Kuyruğa Atılıyor -> Action: %s, Val: %d\n", wpAction, wpCmd.value);
+                        
+                        // Dizideki her bir komutu sırayla kuyruğa gönderiyoruz
+                        xQueueSend(cmdQueue, &wpCmd, pdMS_TO_TICKS(10));
+                    }
+                }
 
-                if(cmd.action != 0) xQueueSend(cmdQueue, &cmd, pdMS_TO_TICKS(10));
+                // Geçerli bir komut atandıysa kuyruğa gönder
+                if (cmd.command != (Command_t)0) {
+                    xQueueSend(cmdQueue, &cmd, pdMS_TO_TICKS(10));
+                }
             }
             break;
         }
@@ -534,8 +552,8 @@ void networkTask(void* parameters) {
     initBlackBox();
     initFOTA();
 
-    IPAddress local_IP(10, 252, 138, 101);
-    IPAddress gateway(10, 252, 138, 1);
+    IPAddress local_IP(10, 95, 9, 101);
+    IPAddress gateway(10, 95, 9, 1);
     IPAddress subnet(255, 255, 255, 0);
     WiFi.config(local_IP, gateway, subnet);
     WiFi.mode(WIFI_STA); 
