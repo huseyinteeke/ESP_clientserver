@@ -463,8 +463,12 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
                         if (strcmp(wpAction, "TURN") == 0) {
                             wpCmd.command = TURN;
                         }
-                        else if (strcmp(wpAction, "DEPTH") == 0 || strcmp(wpAction, "MOVE") == 0) {
+                        else if (strcmp(wpAction, "DEPTH") == 0){ 
                             wpCmd.command = DEPTH; // Veya GO_TO
+                        }
+                        else if(strcmp(wpAction , "MOVE") == 0)
+                        {
+                            wpCmd.command = GO_TO; // Veya GO_TO
                         }
                         else if (strcmp(wpAction, "YUNUSLAMA") == 0 || strcmp(wpAction, "PORPOISING") == 0) {
                             wpCmd.command = YUNUSLAMA;
