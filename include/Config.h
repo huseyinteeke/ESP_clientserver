@@ -8,7 +8,7 @@ const char* const SSID_NAME = "huseyin";
 const char* const PASSWORD  = "12345677";
 
 // Server 
-const char* const SERVER_IP = "10.95.9.138";
+const char* const SERVER_IP = "10.143.238.138";
 const uint16_t SERVER_PORT   = 8080;
 
 // UART Pin Definitions

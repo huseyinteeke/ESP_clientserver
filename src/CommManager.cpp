@@ -15,9 +15,11 @@ void commTask(void* parameters) {
     for(;;) {
         // --- GCS=>STM32---
         if (xQueueReceive(cmdQueue, &outgoingCmd, 0) == pdPASS) {
-            Serial2.write((uint8_t*)&outgoingCmd, sizeof(CommandData_t));
-            vTaskDelay(500);
-            Serial.printf("[Comm] STM32'ye Komut Basıldı: ID %d\n", outgoingCmd.command);
+            if(outgoingCmd.command != CMD_NONE){
+                Serial2.write((uint8_t*)&outgoingCmd, sizeof(CommandData_t));
+                vTaskDelay(500);
+                Serial.printf("[Comm] STM32'ye Komut Basıldı: ID %d\n", outgoingCmd.command);
+            }
         }
 
         // --- STM32 -> GCS ---

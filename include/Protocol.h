@@ -18,16 +18,18 @@ typedef struct __attribute__((packed)){
 
 
 
-typedef enum
+typedef enum __attribute((packed))
 {
-  TURN  = 0,
-  DEPTH , 
-  GO_TO , 
-  SYSTEM_RESET , 
-  ARM , 
-  DISARM , 
-  YUNUSLAMA
+    CMD_NONE = 0, 
+    TURN,
+    DEPTH, 
+    GO_TO, 
+    SYSTEM_RESET, 
+    ARM, 
+    DISARM, 
+    YUNUSLAMA
 } Command_t;
+
 
 typedef struct __attribute((packed))
 {

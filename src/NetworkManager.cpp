@@ -451,36 +451,38 @@ void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
                 }
                 else if (strcmp(action, "WAYPOINT_SEQUENCE") == 0) {
                     JsonArray wpArray = doc["commands"];
+                    Serial.printf("[WS] WAYPOINT_SEQUENCE alındı. Toplam komut sayısı: %d\n", wpArray.size());
                     
+                    int index = 0;
                     for (JsonObject wp : wpArray) {
                         const char* wpAction = wp["action"] | "";
                         float wpValue = wp["value"] | 0.0f;
                         
-                        CommandData_t wpCmd;
-                        wpCmd.value = (int16_t)wpValue; // float değeri int16_t'ye çeviriyoruz
+                        Serial.printf("[WS-DUMP] İndex [%d] -> Ham Action: '%s', Değer: %.2f\n", index, wpAction, wpValue);
                         
-                        // JS'den gelen action metnine göre enum eşlemesi
+                        CommandData_t wpCmd;
+                        wpCmd.value = (int16_t)wpValue; 
+                        
                         if (strcmp(wpAction, "TURN") == 0) {
                             wpCmd.command = TURN;
                         }
-                        else if (strcmp(wpAction, "DEPTH") == 0){ 
-                            wpCmd.command = DEPTH; // Veya GO_TO
+                        else if (strcmp(wpAction, "DEPTH") == 0) { 
+                            wpCmd.command = DEPTH; 
                         }
-                        else if(strcmp(wpAction , "MOVE") == 0)
-                        {
-                            wpCmd.command = GO_TO; // Veya GO_TO
+                        else if (strcmp(wpAction, "MOVE") == 0 || strcmp(wpAction, "GO_TO") == 0) {
+                            wpCmd.command = GO_TO; 
                         }
                         else if (strcmp(wpAction, "YUNUSLAMA") == 0 || strcmp(wpAction, "PORPOISING") == 0) {
                             wpCmd.command = YUNUSLAMA;
                         }
                         else {
-                            wpCmd.command = GO_TO; // Varsayılan veya tanımlı başka bir komut
+                            Serial.printf("[WS-UYARI] Bilinmeyen action eşleşti, varsayılan GO_TO atanıyor: '%s'\n", wpAction);
+                            wpCmd.command = GO_TO; 
                         }
                         
-                        Serial.printf("[WS] Waypoint Kuyruğa Atılıyor -> Action: %s, Val: %d\n", wpAction, wpCmd.value);
-                        
-                        // Dizideki her bir komutu sırayla kuyruğa gönderiyoruz
+                        Serial.printf("[WS] Kuyruğa Atılıyor -> Enum Değeri: %d, Val: %d\n", wpCmd.command, wpCmd.value);
                         xQueueSend(cmdQueue, &wpCmd, pdMS_TO_TICKS(10));
+                        index++;
                     }
                 }
 
@@ -556,8 +558,8 @@ void networkTask(void* parameters) {
     initBlackBox();
     initFOTA();
 
-    IPAddress local_IP(10, 95, 9, 101);
-    IPAddress gateway(10, 95, 9, 1);
+    IPAddress local_IP(10, 143, 238, 101);
+    IPAddress gateway(10, 143, 238, 1);
     IPAddress subnet(255, 255, 255, 0);
     WiFi.config(local_IP, gateway, subnet);
     WiFi.mode(WIFI_STA); 
